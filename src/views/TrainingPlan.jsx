@@ -4,21 +4,30 @@ import { EmptyState } from "../components/EmptyState.jsx";
 import { Field, inputClass, selectClass } from "../components/Field.jsx";
 import { SectionHeader } from "../components/SectionHeader.jsx";
 import { DAYS, getDayLabel } from "../utils/date.js";
+import { formatPlannedSeries, getPlannedSetCount, getPlannedTopSet } from "../utils/progress.js";
 
-const defaultExercise = {
-  name: "",
-  muscle: "Klatka",
-  targetSets: 4,
-  targetReps: 8,
-  targetWeight: 60,
-  note: "",
-};
+function makeSeriesRow(weight = 26, reps = 10) {
+  return {
+    id: window.crypto?.randomUUID ? window.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    weight,
+    reps,
+  };
+}
+
+function createDefaultExercise() {
+  return {
+    name: "",
+    muscle: "Klatka",
+    targetSeries: [makeSeriesRow()],
+    note: "",
+  };
+}
 
 const muscleOptions = ["Klatka", "Plecy", "Nogi", "Barki", "Triceps", "Biceps", "Core", "Łydki", "Tył uda"];
 
 export function TrainingPlan({ data, todayKey, onSetDayType, onUpdateDay, onAddExercise, onRemoveExercise, onOpenExercise }) {
   const [activeDay, setActiveDay] = useState(todayKey);
-  const [exerciseForm, setExerciseForm] = useState(defaultExercise);
+  const [exerciseForm, setExerciseForm] = useState(() => createDefaultExercise());
   const [errors, setErrors] = useState({});
   const dayPlan = data.weeklyPlan[activeDay];
 
@@ -31,12 +40,39 @@ export function TrainingPlan({ data, todayKey, onSetDayType, onUpdateDay, onAddE
     setErrors((current) => ({ ...current, [field]: "" }));
   }
 
+  function updateSeries(rowId, field, value) {
+    setExerciseForm((current) => ({
+      ...current,
+      targetSeries: current.targetSeries.map((row) => (row.id === rowId ? { ...row, [field]: value } : row)),
+    }));
+    setErrors((current) => ({ ...current, targetSeries: "" }));
+  }
+
+  function addSeries() {
+    setExerciseForm((current) => ({
+      ...current,
+      targetSeries: [...current.targetSeries, makeSeriesRow(current.targetSeries.at(-1)?.weight ?? 26, current.targetSeries.at(-1)?.reps ?? 10)],
+    }));
+    setErrors((current) => ({ ...current, targetSeries: "" }));
+  }
+
+  function removeSeries(rowId) {
+    setExerciseForm((current) => ({
+      ...current,
+      targetSeries: current.targetSeries.length > 1 ? current.targetSeries.filter((row) => row.id !== rowId) : current.targetSeries,
+    }));
+    setErrors((current) => ({ ...current, targetSeries: "" }));
+  }
+
   function validateExercise() {
     const nextErrors = {};
+    const hasInvalidSeries = exerciseForm.targetSeries.some((row) => row.weight === "" || Number(row.weight) < 0 || row.reps === "" || Number(row.reps) <= 0);
+
     if (exerciseForm.name.trim().length < 3) nextErrors.name = "Podaj nazwę ćwiczenia.";
-    if (Number(exerciseForm.targetSets) <= 0) nextErrors.targetSets = "Serie muszą być większe od 0.";
-    if (Number(exerciseForm.targetReps) <= 0) nextErrors.targetReps = "Powtórzenia muszą być większe od 0.";
-    if (Number(exerciseForm.targetWeight) < 0) nextErrors.targetWeight = "Ciężar nie może być ujemny.";
+    if (!exerciseForm.targetSeries.length || hasInvalidSeries) {
+      nextErrors.targetSeries = "Każda seria musi mieć ciężar 0 lub większy i przynajmniej 1 powtórzenie.";
+    }
+
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   }
@@ -45,15 +81,28 @@ export function TrainingPlan({ data, todayKey, onSetDayType, onUpdateDay, onAddE
     event.preventDefault();
     if (!validateExercise()) return;
 
+    const targetSeries = exerciseForm.targetSeries.map((row) => ({
+      weight: Number(row.weight),
+      reps: Number(row.reps),
+    }));
+    const topSet = targetSeries.reduce((best, set) => {
+      if (!best) return set;
+      if (set.weight > best.weight) return set;
+      if (set.weight === best.weight && set.reps > best.reps) return set;
+      return best;
+    }, null);
+
     onAddExercise(activeDay, {
-      ...exerciseForm,
       name: exerciseForm.name.trim(),
-      targetSets: Number(exerciseForm.targetSets),
-      targetReps: Number(exerciseForm.targetReps),
-      targetWeight: Number(exerciseForm.targetWeight),
+      muscle: exerciseForm.muscle,
+      targetSeries,
+      targetSets: targetSeries.length,
+      targetReps: topSet?.reps ?? targetSeries[0]?.reps ?? 0,
+      targetWeight: topSet?.weight ?? targetSeries[0]?.weight ?? 0,
       note: exerciseForm.note.trim(),
     });
-    setExerciseForm(defaultExercise);
+    setExerciseForm(createDefaultExercise());
+    setErrors({});
   }
 
   return (
@@ -61,7 +110,7 @@ export function TrainingPlan({ data, todayKey, onSetDayType, onUpdateDay, onAddE
       <SectionHeader
         eyebrow="Plan treningowy"
         title="Tydzień pracy"
-        description="Ustaw dni treningowe, rest day i konkretne ćwiczenia dla każdej jednostki."
+        description="Ustaw dni treningowe, rest day i konkretne serie dla każdego ćwiczenia."
       />
 
       <div className="grid gap-6 xl:grid-cols-[330px_1fr]">
@@ -152,36 +201,40 @@ export function TrainingPlan({ data, todayKey, onSetDayType, onUpdateDay, onAddE
               <div className="mt-6 overflow-hidden rounded-lg border border-line">
                 {dayPlan.exercises.length ? (
                   <div className="divide-y divide-line">
-                    {dayPlan.exercises.map((exercise) => (
-                      <div key={exercise.id} className="grid gap-4 p-4 lg:grid-cols-[1fr_auto] lg:items-center">
-                        <div>
-                          <button className="text-left text-base font-semibold text-zinc-100 hover:text-ember" type="button" onClick={() => onOpenExercise(exercise.name)}>
-                            {exercise.name}
-                          </button>
-                          <p className="mt-1 text-sm text-zinc-500">
-                            {exercise.muscle} · {exercise.targetSets} serii · {exercise.targetReps} powt. · {exercise.targetWeight} kg
-                          </p>
-                          {exercise.note ? <p className="mt-2 text-sm text-zinc-400">{exercise.note}</p> : null}
+                    {dayPlan.exercises.map((exercise) => {
+                      const topSet = getPlannedTopSet(exercise);
+                      return (
+                        <div key={exercise.id} className="grid gap-4 p-4 lg:grid-cols-[1fr_auto] lg:items-center">
+                          <div>
+                            <button className="text-left text-base font-semibold text-zinc-100 hover:text-ember" type="button" onClick={() => onOpenExercise(exercise.name)}>
+                              {exercise.name}
+                            </button>
+                            <p className="mt-1 text-sm text-zinc-500">
+                              {exercise.muscle} · {getPlannedSetCount(exercise)} serii · top {topSet?.reps ?? 0} powt. x {topSet?.weight ?? 0} kg
+                            </p>
+                            <p className="mt-2 text-sm leading-6 text-zinc-400">{formatPlannedSeries(exercise)}</p>
+                            {exercise.note ? <p className="mt-2 text-sm text-zinc-500">{exercise.note}</p> : null}
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              className="rounded-md border border-line px-3 py-2 text-sm font-semibold text-zinc-400 transition hover:border-ember/60 hover:text-zinc-100"
+                              type="button"
+                              onClick={() => onOpenExercise(exercise.name)}
+                            >
+                              Szczegóły
+                            </button>
+                            <button
+                              className="flex h-10 w-10 items-center justify-center rounded-md border border-line text-zinc-500 transition hover:border-red-400/70 hover:text-red-300"
+                              type="button"
+                              onClick={() => onRemoveExercise(activeDay, exercise.id)}
+                              title="Usuń ćwiczenie"
+                            >
+                              <Trash2 size={17} />
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex gap-2">
-                          <button
-                            className="rounded-md border border-line px-3 py-2 text-sm font-semibold text-zinc-400 transition hover:border-ember/60 hover:text-zinc-100"
-                            type="button"
-                            onClick={() => onOpenExercise(exercise.name)}
-                          >
-                            Szczegóły
-                          </button>
-                          <button
-                            className="flex h-10 w-10 items-center justify-center rounded-md border border-line text-zinc-500 transition hover:border-red-400/70 hover:text-red-300"
-                            type="button"
-                            onClick={() => onRemoveExercise(activeDay, exercise.id)}
-                            title="Usuń ćwiczenie"
-                          >
-                            <Trash2 size={17} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <EmptyState title="Brak planu na dziś" description="Ten dzień jest treningowy, ale lista ćwiczeń jest pusta." />
@@ -199,7 +252,7 @@ export function TrainingPlan({ data, todayKey, onSetDayType, onUpdateDay, onAddE
 
                 <div className="grid gap-4 lg:grid-cols-2">
                   <Field label="Nazwa" error={errors.name}>
-                    <input className={inputClass} value={exerciseForm.name} onChange={(event) => updateExercise("name", event.target.value)} placeholder="Np. Hip thrust" />
+                    <input className={inputClass} value={exerciseForm.name} onChange={(event) => updateExercise("name", event.target.value)} placeholder="Np. Wyciskanie hantli" />
                   </Field>
                   <Field label="Partia">
                     <select className={selectClass} value={exerciseForm.muscle} onChange={(event) => updateExercise("muscle", event.target.value)}>
@@ -210,16 +263,45 @@ export function TrainingPlan({ data, todayKey, onSetDayType, onUpdateDay, onAddE
                   </Field>
                 </div>
 
-                <div className="mt-4 grid gap-4 sm:grid-cols-3">
-                  <Field label="Serie" error={errors.targetSets}>
-                    <input className={inputClass} min="1" type="number" value={exerciseForm.targetSets} onChange={(event) => updateExercise("targetSets", event.target.value)} />
-                  </Field>
-                  <Field label="Powtórzenia" error={errors.targetReps}>
-                    <input className={inputClass} min="1" type="number" value={exerciseForm.targetReps} onChange={(event) => updateExercise("targetReps", event.target.value)} />
-                  </Field>
-                  <Field label="Ciężar (kg)" error={errors.targetWeight}>
-                    <input className={inputClass} min="0" step="0.5" type="number" value={exerciseForm.targetWeight} onChange={(event) => updateExercise("targetWeight", event.target.value)} />
-                  </Field>
+                <div className="mt-5">
+                  <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Serie w planie</p>
+                      <p className="mt-1 text-sm text-zinc-400">Np. seria 1: 10 powtórzeń x 26 kg.</p>
+                    </div>
+                    <button
+                      className="inline-flex items-center justify-center gap-2 rounded-md border border-line px-3 py-2 text-sm font-semibold text-zinc-300 transition hover:border-ember/60 hover:text-zinc-50"
+                      type="button"
+                      onClick={addSeries}
+                    >
+                      <Plus size={16} />
+                      Dodaj serię
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    {exerciseForm.targetSeries.map((row, index) => (
+                      <div key={row.id} className="grid gap-3 rounded-md border border-line bg-graphite p-3 sm:grid-cols-[68px_1fr_1fr_40px] sm:items-end">
+                        <div className="flex h-10 min-w-0 items-center justify-center rounded-md bg-coal text-sm font-bold text-ember">Seria {index + 1}</div>
+                        <Field label="Powtórzenia">
+                          <input className={inputClass} min="1" step="1" type="number" value={row.reps} onChange={(event) => updateSeries(row.id, "reps", event.target.value)} />
+                        </Field>
+                        <Field label="Ciężar (kg)">
+                          <input className={inputClass} min="0" step="0.5" type="number" value={row.weight} onChange={(event) => updateSeries(row.id, "weight", event.target.value)} />
+                        </Field>
+                        <button
+                          className="flex h-10 w-10 items-center justify-center rounded-md border border-line text-zinc-500 transition hover:border-red-400/70 hover:text-red-300 disabled:hover:border-line disabled:hover:text-zinc-500"
+                          type="button"
+                          onClick={() => removeSeries(row.id)}
+                          disabled={exerciseForm.targetSeries.length === 1}
+                          title="Usuń serię"
+                        >
+                          <Trash2 size={17} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  {errors.targetSeries ? <p className="mt-2 text-sm text-red-300">{errors.targetSeries}</p> : null}
                 </div>
 
                 <div className="mt-4">

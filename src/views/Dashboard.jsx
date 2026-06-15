@@ -18,9 +18,12 @@ import { SectionHeader } from "../components/SectionHeader.jsx";
 import { StatCard } from "../components/StatCard.jsx";
 import { DAYS, formatDate, getDayLabel } from "../utils/date.js";
 import {
+  formatPlannedSeries,
   getBestResult,
   getBodyMetricSeries,
   getLatestBodyMetric,
+  getPlannedSetCount,
+  getPlannedTopSet,
   getThisMonthWorkouts,
   getTotalVolume,
   getWorkoutVolumeSeries,
@@ -64,7 +67,7 @@ export function Dashboard({ data, todayKey, onSaveResult, onOpenExercise, onChan
           icon={Trophy}
           label="Najlepszy bench"
           value={benchBest ? `${benchBest.weight} kg` : "Brak danych"}
-          hint={benchBest ? `${benchBest.sets}x${benchBest.reps} z ${formatDate(benchBest.date)}` : "Brak danych do wykresu"}
+          hint={benchBest ? `${benchBest.reps} powt. z ${formatDate(benchBest.date)}` : "Brak danych do wykresu"}
         />
         <StatCard
           icon={Flame}
@@ -103,37 +106,41 @@ export function Dashboard({ data, todayKey, onSaveResult, onOpenExercise, onChan
           ) : todayPlan?.exercises?.length ? (
             <>
               <div className="divide-y divide-line rounded-lg border border-line">
-                {todayPlan.exercises.map((exercise) => (
-                  <div key={exercise.id} className="grid gap-4 p-4 md:grid-cols-[1fr_auto] md:items-center">
-                    <div>
-                      <button className="text-left text-base font-semibold text-zinc-100 hover:text-ember" type="button" onClick={() => onOpenExercise(exercise.name)}>
-                        {exercise.name}
-                      </button>
-                      <p className="mt-1 text-sm text-zinc-500">
-                        {exercise.muscle} · cel {exercise.targetSets}x{exercise.targetReps} · {exercise.targetWeight} kg
-                      </p>
-                      {exercise.note ? <p className="mt-2 text-sm text-zinc-400">{exercise.note}</p> : null}
+                {todayPlan.exercises.map((exercise) => {
+                  const topSet = getPlannedTopSet(exercise);
+                  return (
+                    <div key={exercise.id} className="grid gap-4 p-4 md:grid-cols-[1fr_auto] md:items-center">
+                      <div>
+                        <button className="text-left text-base font-semibold text-zinc-100 hover:text-ember" type="button" onClick={() => onOpenExercise(exercise.name)}>
+                          {exercise.name}
+                        </button>
+                        <p className="mt-1 text-sm text-zinc-500">
+                          {exercise.muscle} · {getPlannedSetCount(exercise)} serii · top {topSet?.reps ?? 0} powt. x {topSet?.weight ?? 0} kg
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-zinc-400">{formatPlannedSeries(exercise)}</p>
+                        {exercise.note ? <p className="mt-2 text-sm text-zinc-500">{exercise.note}</p> : null}
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          className={`rounded-md px-3 py-2 text-sm font-semibold transition ${
+                            selectedExercise?.id === exercise.id ? "bg-ember text-black" : "border border-line text-zinc-400 hover:border-ember/60 hover:text-zinc-100"
+                          }`}
+                          type="button"
+                          onClick={() => setSelectedExerciseId(exercise.id)}
+                        >
+                          Wynik
+                        </button>
+                        <button
+                          className="rounded-md border border-line px-3 py-2 text-sm font-semibold text-zinc-400 transition hover:border-ember/60 hover:text-zinc-100"
+                          type="button"
+                          onClick={() => onOpenExercise(exercise.name)}
+                        >
+                          Szczegóły
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex gap-2">
-                      <button
-                        className={`rounded-md px-3 py-2 text-sm font-semibold transition ${
-                          selectedExercise?.id === exercise.id ? "bg-ember text-black" : "border border-line text-zinc-400 hover:border-ember/60 hover:text-zinc-100"
-                        }`}
-                        type="button"
-                        onClick={() => setSelectedExerciseId(exercise.id)}
-                      >
-                        Wynik
-                      </button>
-                      <button
-                        className="rounded-md border border-line px-3 py-2 text-sm font-semibold text-zinc-400 transition hover:border-ember/60 hover:text-zinc-100"
-                        type="button"
-                        onClick={() => onOpenExercise(exercise.name)}
-                      >
-                        Szczegóły
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               <div className="mt-5">
                 <ExerciseResultForm exercise={selectedExercise} dayKey={todayKey} onSave={onSaveResult} compact />
