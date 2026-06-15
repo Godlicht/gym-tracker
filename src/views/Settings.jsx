@@ -3,7 +3,7 @@ import { Save, UserRound } from "lucide-react";
 import { Field, inputClass, selectClass } from "../components/Field.jsx";
 import { SectionHeader } from "../components/SectionHeader.jsx";
 
-export function SettingsView({ profile, user, onUpdateProfile }) {
+export function SettingsView({ profile, user, users = [], onUpdateProfile }) {
   const [form, setForm] = useState({
     name: profile.name || user.name,
     email: profile.email || user.email,
@@ -22,8 +22,13 @@ export function SettingsView({ profile, user, onUpdateProfile }) {
 
   function validate() {
     const nextErrors = {};
+    const normalizedEmail = form.email.trim().toLowerCase();
+
     if (form.name.trim().length < 2) nextErrors.name = "Podaj nazwę profilu.";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) nextErrors.email = "Podaj poprawny adres e-mail.";
+    if (users.some((account) => account.id !== user.id && account.email === normalizedEmail)) {
+      nextErrors.email = "Ten e-mail jest już zajęty.";
+    }
     if (form.goal.trim().length < 3) nextErrors.goal = "Podaj cel treningowy.";
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;

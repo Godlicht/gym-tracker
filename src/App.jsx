@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "./components/AppShell.jsx";
 import { AuthScreen } from "./components/AuthScreen.jsx";
-import { seedAppData, seedUsers } from "./data/seedData.js";
+import { createEmptyAppData, seedDataByUser, seedUsers } from "./data/seedData.js";
 import { useLocalStorage } from "./hooks/useLocalStorage.js";
 import { BodyMetrics } from "./views/BodyMetrics.jsx";
 import { Dashboard } from "./views/Dashboard.jsx";
@@ -18,15 +18,59 @@ function makeId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function getInitialDataByUser() {
+  try {
+    const legacyData = window.localStorage.getItem("forgefit:data");
+    if (legacyData) {
+      return {
+        ...seedDataByUser,
+        [seedUsers[0].id]: JSON.parse(legacyData),
+      };
+    }
+  } catch {
+    // If localStorage is blocked or legacy data is malformed, fall back to the demo dataset.
+  }
+
+  return seedDataByUser;
+}
+
 export default function App() {
   const [users, setUsers] = useLocalStorage("forgefit:users", seedUsers);
   const [session, setSession] = useLocalStorage("forgefit:session", null);
-  const [data, setData] = useLocalStorage("forgefit:data", seedAppData);
+  const initialDataByUser = useMemo(() => getInitialDataByUser(), []);
+  const [dataByUser, setDataByUser] = useLocalStorage("forgefit:dataByUser", initialDataByUser);
   const [activeView, setActiveView] = useState("dashboard");
-  const [selectedExerciseName, setSelectedExerciseName] = useState("Wyciskanie sztangi leżąc");
+  const [selectedExerciseName, setSelectedExerciseName] = useState("");
   const todayKey = getTodayKey();
 
   const currentUser = useMemo(() => users.find((user) => user.id === session?.userId), [users, session]);
+  const data = useMemo(() => {
+    if (!currentUser) return null;
+    return dataByUser[currentUser.id] ?? createEmptyAppData(currentUser);
+  }, [currentUser, dataByUser]);
+
+  useEffect(() => {
+    if (!currentUser || dataByUser[currentUser.id]) return;
+
+    setDataByUser((current) => ({
+      ...current,
+      [currentUser.id]: createEmptyAppData(currentUser),
+    }));
+  }, [currentUser, dataByUser, setDataByUser]);
+
+  function setCurrentUserData(updater) {
+    if (!currentUser) return;
+
+    setDataByUser((current) => {
+      const currentUserData = current[currentUser.id] ?? createEmptyAppData(currentUser);
+      const nextUserData = typeof updater === "function" ? updater(currentUserData) : updater;
+
+      return {
+        ...current,
+        [currentUser.id]: nextUserData,
+      };
+    });
+  }
 
   function handleLogin({ email, password }) {
     const user = users.find((candidate) => candidate.email === email && candidate.password === password);
@@ -34,6 +78,8 @@ export default function App() {
       return { ok: false, message: "Nie znaleziono konta z takim e-mailem i hasłem." };
     }
     setSession({ userId: user.id, loggedAt: new Date().toISOString() });
+    setActiveView("dashboard");
+    setSelectedExerciseName("");
     return { ok: true };
   }
 
@@ -51,15 +97,13 @@ export default function App() {
     };
 
     setUsers((current) => [...current, user]);
-    setData((current) => ({
+    setDataByUser((current) => ({
       ...current,
-      profile: {
-        ...current.profile,
-        name,
-        email,
-      },
+      [user.id]: createEmptyAppData(user),
     }));
     setSession({ userId: user.id, loggedAt: new Date().toISOString() });
+    setActiveView("dashboard");
+    setSelectedExerciseName("");
     return { ok: true };
   }
 
@@ -69,7 +113,7 @@ export default function App() {
   }
 
   function handleSetDayType(dayKey, type) {
-    setData((current) => ({
+    setCurrentUserData((current) => ({
       ...current,
       weeklyPlan: {
         ...current.weeklyPlan,
@@ -83,7 +127,7 @@ export default function App() {
   }
 
   function handleUpdateDay(dayKey, values) {
-    setData((current) => ({
+    setCurrentUserData((current) => ({
       ...current,
       weeklyPlan: {
         ...current.weeklyPlan,
@@ -96,7 +140,7 @@ export default function App() {
   }
 
   function handleAddExercise(dayKey, exercise) {
-    setData((current) => ({
+    setCurrentUserData((current) => ({
       ...current,
       weeklyPlan: {
         ...current.weeklyPlan,
@@ -116,7 +160,7 @@ export default function App() {
   }
 
   function handleRemoveExercise(dayKey, exerciseId) {
-    setData((current) => ({
+    setCurrentUserData((current) => ({
       ...current,
       weeklyPlan: {
         ...current.weeklyPlan,
@@ -129,7 +173,7 @@ export default function App() {
   }
 
   function handleSaveResult(result) {
-    setData((current) => {
+    setCurrentUserData((current) => {
       const dayKey = result.dayKey || getDayKeyFromDate(result.date);
       const dayPlan = current.weeklyPlan[dayKey];
       const workoutTitle = dayPlan?.type === "training" ? dayPlan.title : "Trening własny";
@@ -177,17 +221,28 @@ export default function App() {
   }
 
   function handleAddBodyMetric(metric) {
-    setData((current) => ({
+    setCurrentUserData((current) => ({
       ...current,
       bodyMetrics: [{ ...metric, id: makeId("bm") }, ...current.bodyMetrics].sort(compareDateDesc),
     }));
   }
 
   function handleUpdateProfile(profile) {
-    setData((current) => ({
+    setCurrentUserData((current) => ({
       ...current,
       profile,
     }));
+    setUsers((current) =>
+      current.map((user) =>
+        user.id === currentUser.id
+          ? {
+              ...user,
+              name: profile.name,
+              email: profile.email,
+            }
+          : user,
+      ),
+    );
   }
 
   function openExercise(exerciseName) {
@@ -230,7 +285,7 @@ export default function App() {
     ),
     history: <History data={data} onOpenExercise={openExercise} />,
     body: <BodyMetrics data={data} onAddBodyMetric={handleAddBodyMetric} />,
-    settings: <SettingsView profile={data.profile} user={currentUser} onUpdateProfile={handleUpdateProfile} />,
+    settings: <SettingsView profile={data.profile} user={currentUser} users={users} onUpdateProfile={handleUpdateProfile} />,
   };
 
   return (
