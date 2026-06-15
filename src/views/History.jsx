@@ -4,9 +4,10 @@ import { EmptyState } from "../components/EmptyState.jsx";
 import { inputClass } from "../components/Field.jsx";
 import { SectionHeader } from "../components/SectionHeader.jsx";
 import { compareDateDesc, formatDate, getDayLabel } from "../utils/date.js";
+import { formatSeriesReps, formatSeriesWeights, formatSetCount, getExerciseVolume } from "../utils/progress.js";
 
 function workoutVolume(workout) {
-  return workout.exercises.reduce((sum, exercise) => sum + exercise.weight * exercise.reps * exercise.sets, 0);
+  return workout.exercises.reduce((sum, exercise) => sum + getExerciseVolume(exercise), 0);
 }
 
 export function History({ data, onOpenExercise }) {
@@ -73,7 +74,7 @@ export function History({ data, onOpenExercise }) {
                     <tr>
                       <th className="py-3 pr-4 font-semibold">Ćwiczenie</th>
                       <th className="py-3 pr-4 font-semibold">Partia</th>
-                      <th className="py-3 pr-4 font-semibold">Ciężar</th>
+                      <th className="py-3 pr-4 font-semibold">Ciężary</th>
                       <th className="py-3 pr-4 font-semibold">Serie</th>
                       <th className="py-3 pr-4 font-semibold">Powt.</th>
                       <th className="py-3 pr-4 font-semibold">Notatka</th>
@@ -88,9 +89,9 @@ export function History({ data, onOpenExercise }) {
                           </button>
                         </td>
                         <td className="py-3 pr-4 text-zinc-500">{exercise.muscle}</td>
-                        <td className="py-3 pr-4">{exercise.weight} kg</td>
-                        <td className="py-3 pr-4">{exercise.sets}</td>
-                        <td className="py-3 pr-4">{exercise.reps}</td>
+                        <td className="py-3 pr-4">{formatSeriesWeights(exercise)} kg</td>
+                        <td className="py-3 pr-4">{formatSetCount(exercise)}</td>
+                        <td className="py-3 pr-4">{formatSeriesReps(exercise)}</td>
                         <td className="py-3 pr-4 text-zinc-500">{exercise.note || "-"}</td>
                       </tr>
                     ))}

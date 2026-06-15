@@ -18,7 +18,7 @@ import { Field, selectClass } from "../components/Field.jsx";
 import { SectionHeader } from "../components/SectionHeader.jsx";
 import { StatCard } from "../components/StatCard.jsx";
 import { formatDate } from "../utils/date.js";
-import { getExerciseCatalog, getProgressForExercise } from "../utils/progress.js";
+import { formatSeriesReps, formatSeriesWeights, formatSetCount, getExerciseCatalog, getProgressForExercise } from "../utils/progress.js";
 
 const tooltipStyle = {
   background: "#151517",
@@ -83,13 +83,13 @@ export function ExerciseDetails({ data, selectedExerciseName, onSelectExercise, 
           icon={Weight}
           label="Ostatni wynik"
           value={latest ? `${latest.weight} kg` : "Brak danych"}
-          hint={latest ? `${latest.sets}x${latest.reps} · ${formatDate(latest.date)}` : "Brak historii ćwiczenia"}
+          hint={latest ? `${formatSetCount(latest)} · top ${latest.weight} kg x ${latest.reps} · ${formatDate(latest.date)}` : "Brak historii ćwiczenia"}
         />
         <StatCard
           icon={Dumbbell}
           label="Największy ciężar"
           value={bestWeight ? `${bestWeight.weight} kg` : "Brak danych"}
-          hint={bestWeight ? `${bestWeight.sets}x${bestWeight.reps} · ${formatDate(bestWeight.date)}` : "Brak danych do wykresu"}
+          hint={bestWeight ? `${bestWeight.reps} powt. · ${formatDate(bestWeight.date)}` : "Brak danych do wykresu"}
         />
         <StatCard
           icon={TrendingUp}
@@ -148,7 +148,7 @@ export function ExerciseDetails({ data, selectedExerciseName, onSelectExercise, 
                 <thead className="border-b border-line text-xs uppercase tracking-[0.16em] text-zinc-500">
                   <tr>
                     <th className="py-3 pr-4 font-semibold">Data</th>
-                    <th className="py-3 pr-4 font-semibold">Ciężar</th>
+                    <th className="py-3 pr-4 font-semibold">Ciężary</th>
                     <th className="py-3 pr-4 font-semibold">Serie</th>
                     <th className="py-3 pr-4 font-semibold">Powt.</th>
                     <th className="py-3 pr-4 font-semibold">Notatka</th>
@@ -158,9 +158,9 @@ export function ExerciseDetails({ data, selectedExerciseName, onSelectExercise, 
                   {[...progress].reverse().map((entry) => (
                     <tr key={`${entry.workoutId}-${entry.id}`}>
                       <td className="py-3 pr-4 text-zinc-400">{formatDate(entry.date)}</td>
-                      <td className="py-3 pr-4 font-semibold text-zinc-100">{entry.weight} kg</td>
-                      <td className="py-3 pr-4">{entry.sets}</td>
-                      <td className="py-3 pr-4">{entry.reps}</td>
+                      <td className="py-3 pr-4 font-semibold text-zinc-100">{formatSeriesWeights(entry)} kg</td>
+                      <td className="py-3 pr-4">{formatSetCount(entry)}</td>
+                      <td className="py-3 pr-4">{formatSeriesReps(entry)}</td>
                       <td className="py-3 pr-4 text-zinc-500">{entry.note || "-"}</td>
                     </tr>
                   ))}

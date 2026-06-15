@@ -177,14 +177,25 @@ export default function App() {
       const dayKey = result.dayKey || getDayKeyFromDate(result.date);
       const dayPlan = current.weeklyPlan[dayKey];
       const workoutTitle = dayPlan?.type === "training" ? dayPlan.title : "Trening własny";
+      const series = result.series.map((set) => ({
+        weight: Number(set.weight),
+        reps: Number(set.reps),
+      }));
+      const topSet = series.reduce((best, set) => {
+        if (!best) return set;
+        if (set.weight > best.weight) return set;
+        if (set.weight === best.weight && set.reps > best.reps) return set;
+        return best;
+      }, null);
       const entry = {
         id: makeId("wr"),
         exerciseId: result.exercise.id,
         name: result.exercise.name,
         muscle: result.exercise.muscle ?? "Inne",
-        weight: result.weight,
-        reps: result.reps,
-        sets: result.sets,
+        weight: topSet?.weight ?? 0,
+        reps: topSet?.reps ?? 0,
+        sets: series.length,
+        series,
         note: result.note,
       };
 
