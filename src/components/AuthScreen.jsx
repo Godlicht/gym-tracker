@@ -13,6 +13,7 @@ export function AuthScreen({ onLogin, onRegister }) {
   const [form, setForm] = useState(initialForm);
   const [errors, setErrors] = useState({});
   const [serverError, setServerError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -39,7 +40,7 @@ export function AuthScreen({ onLogin, onRegister }) {
     return Object.keys(nextErrors).length === 0;
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
     if (!validate()) return;
 
@@ -49,7 +50,10 @@ export function AuthScreen({ onLogin, onRegister }) {
       password: form.password,
     };
 
-    const result = mode === "login" ? onLogin(payload) : onRegister(payload);
+    setSubmitting(true);
+    const result = mode === "login" ? await onLogin(payload) : await onRegister(payload);
+    setSubmitting(false);
+
     if (!result.ok) {
       setServerError(result.message);
     }
@@ -143,8 +147,12 @@ export function AuthScreen({ onLogin, onRegister }) {
 
                 {serverError ? <p className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">{serverError}</p> : null}
 
-                <button className="flex w-full items-center justify-center gap-2 rounded-md bg-ember px-4 py-3 text-sm font-bold text-black transition hover:bg-amberline" type="submit">
-                  {mode === "login" ? "Wejdź do panelu" : "Utwórz konto"}
+                <button
+                  className="flex w-full items-center justify-center gap-2 rounded-md bg-ember px-4 py-3 text-sm font-bold text-black transition hover:bg-amberline disabled:cursor-not-allowed disabled:opacity-60"
+                  type="submit"
+                  disabled={submitting}
+                >
+                  {submitting ? "Łączenie..." : mode === "login" ? "Wejdź do panelu" : "Utwórz konto"}
                   <ArrowRight size={18} />
                 </button>
               </form>

@@ -1,12 +1,3 @@
-export const seedUsers = [
-  {
-    id: "user-demo",
-    name: "Jakub",
-    email: "demo@forgefit.app",
-    password: "demo123",
-  },
-];
-
 export function createEmptyAppData(user = {}) {
   const profileName = user.name || "Nowy użytkownik";
   const profileEmail = user.email || "";
@@ -330,8 +321,4 @@ export const seedAppData = {
     { id: "bm-3", date: "2026-06-01", weight: 83.1, height: 181, chest: 107.2, waist: 86.4, hips: 100.1, arm: 38.8, thigh: 62.1, calf: 39.7 },
     { id: "bm-4", date: "2026-06-14", weight: 82.7, height: 181, chest: 107.5, waist: 85.9, hips: 99.8, arm: 39.1, thigh: 62.4, calf: 39.9 },
   ],
-};
-
-export const seedDataByUser = {
-  [seedUsers[0].id]: seedAppData,
 };

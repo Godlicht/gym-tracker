@@ -13,6 +13,7 @@ export function SettingsView({ profile, user, users = [], onUpdateProfile }) {
   });
   const [errors, setErrors] = useState({});
   const [saved, setSaved] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -34,15 +35,28 @@ export function SettingsView({ profile, user, users = [], onUpdateProfile }) {
     return Object.keys(nextErrors).length === 0;
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
     if (!validate()) return;
-    onUpdateProfile({
+
+    setSubmitting(true);
+    const result = await onUpdateProfile({
       ...form,
       name: form.name.trim(),
       email: form.email.trim().toLowerCase(),
       goal: form.goal.trim(),
     });
+    setSubmitting(false);
+
+    if (result && !result.ok) {
+      setErrors((current) => ({
+        ...current,
+        email: result.message,
+      }));
+      setSaved(false);
+      return;
+    }
+
     setSaved(true);
   }
 
@@ -91,9 +105,13 @@ export function SettingsView({ profile, user, users = [], onUpdateProfile }) {
         </div>
 
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <button className="inline-flex items-center justify-center gap-2 rounded-md bg-ember px-4 py-2.5 text-sm font-bold text-black transition hover:bg-amberline" type="submit">
+          <button
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-ember px-4 py-2.5 text-sm font-bold text-black transition hover:bg-amberline disabled:cursor-not-allowed disabled:opacity-60"
+            type="submit"
+            disabled={submitting}
+          >
             <Save size={17} />
-            Zapisz ustawienia
+            {submitting ? "Zapisywanie..." : "Zapisz ustawienia"}
           </button>
           {saved ? <p className="text-sm text-emerald-300">Ustawienia zapisane.</p> : null}
         </div>
