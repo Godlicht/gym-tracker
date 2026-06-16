@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "./components/AppShell.jsx";
 import { AuthScreen } from "./components/AuthScreen.jsx";
-import { createEmptyAppData, seedDataByUser, seedUsers } from "./data/seedData.js";
-import { useLocalStorage } from "./hooks/useLocalStorage.js";
 import { BodyMetrics } from "./views/BodyMetrics.jsx";
 import { Dashboard } from "./views/Dashboard.jsx";
 import { ExerciseDetails } from "./views/ExerciseDetails.jsx";
@@ -10,6 +8,7 @@ import { History } from "./views/History.jsx";
 import { SettingsView } from "./views/Settings.jsx";
 import { TrainingPlan } from "./views/TrainingPlan.jsx";
 import { compareDateDesc, getDayKeyFromDate, getTodayKey } from "./utils/date.js";
+import { api } from "./utils/api.js";
 
 function makeId(prefix) {
   if (window.crypto?.randomUUID) {
@@ -18,98 +17,89 @@ function makeId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function getInitialDataByUser() {
-  try {
-    const legacyData = window.localStorage.getItem("forgefit:data");
-    if (legacyData) {
-      return {
-        ...seedDataByUser,
-        [seedUsers[0].id]: JSON.parse(legacyData),
-      };
-    }
-  } catch {
-    // If localStorage is blocked or legacy data is malformed, fall back to the demo dataset.
-  }
-
-  return seedDataByUser;
-}
-
 export default function App() {
-  const [users, setUsers] = useLocalStorage("forgefit:users", seedUsers);
-  const [session, setSession] = useLocalStorage("forgefit:session", null);
-  const initialDataByUser = useMemo(() => getInitialDataByUser(), []);
-  const [dataByUser, setDataByUser] = useLocalStorage("forgefit:dataByUser", initialDataByUser);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [appError, setAppError] = useState("");
   const [activeView, setActiveView] = useState("dashboard");
   const [selectedExerciseName, setSelectedExerciseName] = useState("");
   const todayKey = getTodayKey();
 
-  const currentUser = useMemo(() => users.find((user) => user.id === session?.userId), [users, session]);
-  const data = useMemo(() => {
-    if (!currentUser) return null;
-    return dataByUser[currentUser.id] ?? createEmptyAppData(currentUser);
-  }, [currentUser, dataByUser]);
-
   useEffect(() => {
-    if (!currentUser || dataByUser[currentUser.id]) return;
+    let active = true;
 
-    setDataByUser((current) => ({
-      ...current,
-      [currentUser.id]: createEmptyAppData(currentUser),
-    }));
-  }, [currentUser, dataByUser, setDataByUser]);
+    api.me().then((result) => {
+      if (!active) return;
 
-  function setCurrentUserData(updater) {
-    if (!currentUser) return;
+      if (result.ok) {
+        setCurrentUser(result.user);
+        setData(result.data);
+      } else {
+        setCurrentUser(null);
+        setData(null);
+      }
 
-    setDataByUser((current) => {
-      const currentUserData = current[currentUser.id] ?? createEmptyAppData(currentUser);
-      const nextUserData = typeof updater === "function" ? updater(currentUserData) : updater;
+      setLoading(false);
+    });
 
-      return {
-        ...current,
-        [currentUser.id]: nextUserData,
-      };
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const profile = useMemo(() => data?.profile ?? currentUser ?? {}, [currentUser, data]);
+
+  function persistData(nextData) {
+    api.saveData(nextData).then((result) => {
+      if (!result.ok) {
+        setAppError(result.message);
+        return;
+      }
+      setAppError("");
     });
   }
 
-  function handleLogin({ email, password }) {
-    const user = users.find((candidate) => candidate.email === email && candidate.password === password);
-    if (!user) {
-      return { ok: false, message: "Nie znaleziono konta z takim e-mailem i hasłem." };
-    }
-    setSession({ userId: user.id, loggedAt: new Date().toISOString() });
+  function setCurrentUserData(updater) {
+    setData((current) => {
+      if (!current) return current;
+      const nextData = typeof updater === "function" ? updater(current) : updater;
+      persistData(nextData);
+      return nextData;
+    });
+  }
+
+  async function handleLogin({ email, password }) {
+    const result = await api.login({ email, password });
+    if (!result.ok) return result;
+
+    setCurrentUser(result.user);
+    setData(result.data);
     setActiveView("dashboard");
     setSelectedExerciseName("");
+    setAppError("");
     return { ok: true };
   }
 
-  function handleRegister({ name, email, password }) {
-    const exists = users.some((candidate) => candidate.email === email);
-    if (exists) {
-      return { ok: false, message: "Konto z tym adresem e-mail już istnieje." };
-    }
+  async function handleRegister({ name, email, password }) {
+    const result = await api.register({ name, email, password });
+    if (!result.ok) return result;
 
-    const user = {
-      id: makeId("user"),
-      name,
-      email,
-      password,
-    };
-
-    setUsers((current) => [...current, user]);
-    setDataByUser((current) => ({
-      ...current,
-      [user.id]: createEmptyAppData(user),
-    }));
-    setSession({ userId: user.id, loggedAt: new Date().toISOString() });
+    setCurrentUser(result.user);
+    setData(result.data);
     setActiveView("dashboard");
     setSelectedExerciseName("");
+    setAppError("");
     return { ok: true };
   }
 
-  function handleLogout() {
-    setSession(null);
+  async function handleLogout() {
+    await api.logout();
+    setCurrentUser(null);
+    setData(null);
     setActiveView("dashboard");
+    setSelectedExerciseName("");
+    setAppError("");
   }
 
   function handleSetDayType(dayKey, type) {
@@ -238,22 +228,27 @@ export default function App() {
     }));
   }
 
-  function handleUpdateProfile(profile) {
-    setCurrentUserData((current) => ({
-      ...current,
-      profile,
-    }));
-    setUsers((current) =>
-      current.map((user) =>
-        user.id === currentUser.id
-          ? {
-              ...user,
-              name: profile.name,
-              email: profile.email,
-            }
-          : user,
-      ),
-    );
+  async function handleUpdateProfile(nextProfile) {
+    if (!data) return { ok: false, message: "Brak danych profilu." };
+
+    const previousData = data;
+    const optimisticData = {
+      ...data,
+      profile: nextProfile,
+    };
+
+    setData(optimisticData);
+    const result = await api.updateProfile(nextProfile);
+
+    if (!result.ok) {
+      setData(previousData);
+      return result;
+    }
+
+    setCurrentUser(result.user);
+    setData(result.data);
+    setAppError("");
+    return { ok: true };
   }
 
   function openExercise(exerciseName) {
@@ -261,7 +256,18 @@ export default function App() {
     setActiveView("exercise");
   }
 
-  if (!currentUser) {
+  if (loading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-ink px-5 text-zinc-100">
+        <div className="rounded-lg border border-line bg-graphite p-6 text-center shadow-glow">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-ember">ForgeFit</p>
+          <p className="mt-2 text-sm text-zinc-400">Ładowanie bezpiecznej sesji...</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (!currentUser || !data) {
     return <AuthScreen onLogin={handleLogin} onRegister={handleRegister} />;
   }
 
@@ -296,11 +302,12 @@ export default function App() {
     ),
     history: <History data={data} onOpenExercise={openExercise} />,
     body: <BodyMetrics data={data} onAddBodyMetric={handleAddBodyMetric} />,
-    settings: <SettingsView profile={data.profile} user={currentUser} users={users} onUpdateProfile={handleUpdateProfile} />,
+    settings: <SettingsView profile={data.profile} user={currentUser} onUpdateProfile={handleUpdateProfile} />,
   };
 
   return (
-    <AppShell activeView={activeView} onChangeView={setActiveView} user={currentUser} profile={data.profile} onLogout={handleLogout}>
+    <AppShell activeView={activeView} onChangeView={setActiveView} user={currentUser} profile={profile} onLogout={handleLogout}>
+      {appError ? <div className="mb-5 rounded-md border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{appError}</div> : null}
       {views[activeView] ?? views.dashboard}
     </AppShell>
   );
